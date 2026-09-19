@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Better PiP</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app" id="app">
+      <header class="header">
+        <p class="kicker" id="status">Better PiP</p>
+        <h1 id="title">No YouTube video</h1>
+      </header>
+
+      <section class="timeline-wrap">
+        <div class="timeline" id="timeline" role="slider" aria-label="Seek">
+          <div class="timeline-rail">
+            <div class="timeline-played" id="played"></div>
+            <div class="timeline-thumb" id="thumb"></div>
+          </div>
+        </div>
+        <div class="time-row">
+          <span id="current">0:00</span>
+          <span id="remaining">0:00</span>
+        </div>
+        <div class="chapters" id="chapters"></div>
+      </section>
+
+      <section class="transport">
+        <button type="button" id="skip-back" title="Back 10 seconds">−10</button>
+        <button type="button" class="play" id="play" title="Play">Play</button>
+        <button type="button" id="skip-forward" title="Forward 10 seconds">+10</button>
+      </section>
+
+      <section class="row">
+        <button type="button" id="mute">Mute</button>
+        <input id="volume" type="range" min="0" max="1" step="0.01" />
+      </section>
+
+      <section class="block">
+        <p class="label">Speed</p>
+        <div class="chips" id="speeds"></div>
+      </section>
+
+      <section class="block">
+        <p class="label">Sleep</p>
+        <div class="chips" id="sleeps"></div>
+        <p class="hint" id="sleep-left"></p>
+      </section>
+
+      <section class="actions">
+        <button type="button" class="primary" id="toggle-pip">Open PiP</button>
+        <button type="button" id="open-player">Open player</button>
+        <button type="button" id="dismiss">Dismiss</button>
+      </section>
+
+      <section class="settings">
+        <label class="check">
+          <input type="checkbox" id="auto-pip" />
+          Auto-PiP when I leave the tab
+        </label>
+        <label class="select">
+          Default speed
+          <select id="default-speed"></select>
+        </label>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

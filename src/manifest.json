@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "Better PiP",
+  "version": "0.2.0",
+  "description": "YouTube Picture-in-Picture with a popup controller, shortcuts, auto-PiP, chapters, and sleep timer.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Better PiP",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": ["scripting", "storage", "tabs"],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://youtube.com/*",
+    "*://*.youtube-nocookie.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-pip": {
+      "suggested_key": {
+        "default": "Alt+P"
+      },
+      "description": "Toggle Better PiP"
+    },
+    "seek-back": {
+      "suggested_key": {
+        "default": "Alt+J"
+      },
+      "description": "Seek back 10 seconds"
+    },
+    "seek-forward": {
+      "suggested_key": {
+        "default": "Alt+L"
+      },
+      "description": "Seek forward 10 seconds"
+    },
+    "toggle-mute": {
+      "description": "Mute or unmute the PiP video"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtube.com/*",
+        "*://*.youtube-nocookie.com/*"
+      ],
+      "js": ["content-main.js"],
+      "css": ["content.css"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtube.com/*",
+        "*://*.youtube-nocookie.com/*"
+      ],
+      "js": ["content-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
