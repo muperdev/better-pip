@@ -8,6 +8,10 @@ import { isAdShowing } from "../youtube/ads";
 
 export type EnterReason = "user" | "auto" | "keep";
 
+export type PipOpenOptions = {
+  onUserClose?: () => void;
+};
+
 export class PipSession {
   private readonly video: HTMLVideoElement;
   private readonly parent: Element;
@@ -30,18 +34,21 @@ export class PipSession {
     this.reason = reason;
   }
 
-  static async open(reason: EnterReason): Promise<PipSession | null> {
-    if (document.pictureInPictureElement instanceof HTMLVideoElement) {
+  static async open(
+    reason: EnterReason,
+    options: PipOpenOptions = {},
+  ): Promise<PipSession | null> {
+    if (session) {
       return session;
+    }
+
+    const alreadyOpen = document.pictureInPictureElement;
+    if (alreadyOpen instanceof HTMLVideoElement) {
+      return PipSession.attach(alreadyOpen, reason, options.onUserClose);
     }
 
     const video = findYoutubeVideo();
     if (!video || !document.pictureInPictureEnabled) {
-      return null;
-    }
-
-    const parent = video.parentElement;
-    if (!parent) {
       return null;
     }
 
@@ -57,6 +64,23 @@ export class PipSession {
       return null;
     }
 
+    return PipSession.attach(video, reason, options.onUserClose);
+  }
+
+  private static attach(
+    video: HTMLVideoElement,
+    reason: EnterReason,
+    onUserClose: (() => void) | undefined,
+  ): PipSession | null {
+    if (session) {
+      return session;
+    }
+
+    const parent = video.parentElement;
+    if (!parent) {
+      return null;
+    }
+
     const sessionRef: { current: PipSession | null } = { current: null };
     const placeholder = createPlaceholder(() => {
       sessionRef.current?.openOnYouTube();
@@ -64,6 +88,9 @@ export class PipSession {
     parent.append(placeholder);
 
     const onLeave = (): void => {
+      if (document.contains(video)) {
+        onUserClose?.();
+      }
       sessionRef.current?.destroy();
     };
     video.addEventListener("leavepictureinpicture", onLeave);
@@ -118,20 +145,21 @@ export function isPipActive(): boolean {
   return document.pictureInPictureElement instanceof HTMLVideoElement;
 }
 
-export async function enterPip(reason: EnterReason): Promise<boolean> {
-  const next = await PipSession.open(reason);
+export async function enterPip(
+  reason: EnterReason,
+  options: PipOpenOptions = {},
+): Promise<boolean> {
+  const next = await PipSession.open(reason, options);
   return next !== null;
 }
 
 export function exitPip(): void {
-  session?.dismiss();
-}
-
-export async function togglePipSession(): Promise<void> {
-  if (session || isPipActive()) {
-    exitPip();
+  if (session) {
+    session.dismiss();
     return;
   }
 
-  await enterPip("user");
+  if (document.pictureInPictureElement) {
+    void document.exitPictureInPicture();
+  }
 }

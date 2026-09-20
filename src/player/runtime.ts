@@ -6,13 +6,13 @@ import {
   findYoutubeVideo,
   isLivePlayer,
   readVideoTitle,
+  waitForYoutubeVideo,
 } from "../youtube/find-player";
 import {
   enterPip,
   exitPip,
   getActiveSession,
   isPipActive,
-  togglePipSession,
 } from "../pip/session";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -21,25 +21,22 @@ let sleepTimer = 0;
 let pendingEnter: "user" | "auto" | "keep" | null = null;
 let keepAfterLeave = false;
 let stopAdWatch: (() => void) | null = null;
+let enterLock: Promise<boolean> | null = null;
+let youtubeNavigating = false;
 
 export function bootRuntime(): void {
   if (stopAdWatch) {
     return;
   }
 
-  stopAdWatch = watchAdState((showing) => {
-    if (!showing) {
-      void flushPendingEnter();
-    }
-  });
-
+  bindAdWatch();
   bindMediaSession();
   window.setInterval(bindMediaSession, 2000);
   document.addEventListener("play", bindMediaSession, true);
 
   document.addEventListener("visibilitychange", () => {
     bindMediaSession();
-    if (document.hidden) {
+    if (pageIsHidden()) {
       void handleTabHidden();
       return;
     }
@@ -47,10 +44,16 @@ export function bootRuntime(): void {
     void handleTabShown();
   });
 
+  document.addEventListener("yt-navigate-start", () => {
+    youtubeNavigating = true;
+  });
+
   document.addEventListener("yt-navigate-finish", () => {
     applyPlaybackPrefs();
     bindMediaSession();
-    void recoverPipAfterNavigation();
+    void recoverPipAfterNavigation().finally(() => {
+      youtubeNavigating = false;
+    });
   });
 
   applyPlaybackPrefs();
@@ -64,13 +67,11 @@ export async function handleCommand(command: Command): Promise<PlayerState> {
       await toggleFromUser();
       break;
     case "dismiss-pip":
-      keepAfterLeave = false;
-      pendingEnter = null;
+      forgetPipIntent();
       exitPip();
       break;
     case "open-player":
-      keepAfterLeave = false;
-      pendingEnter = null;
+      forgetPipIntent();
       getActiveSession()?.openOnYouTube();
       window.focus();
       break;
@@ -104,6 +105,7 @@ export async function handleCommand(command: Command): Promise<PlayerState> {
     case "apply-settings":
       settings = command.settings;
       applyPlaybackPrefs();
+      bindMediaSession();
       break;
     case "tab-hidden":
       void handleTabHidden();
@@ -141,8 +143,7 @@ export function readState(): PlayerState {
 
 async function toggleFromUser(): Promise<void> {
   if (isPipActive()) {
-    keepAfterLeave = false;
-    pendingEnter = null;
+    forgetPipIntent();
     exitPip();
     return;
   }
@@ -156,7 +157,7 @@ async function toggleFromUser(): Promise<void> {
 }
 
 async function handleTabHidden(): Promise<void> {
-  if (!settings.autoPip) {
+  if (!settings.autoPip || !pageIsHidden()) {
     return;
   }
 
@@ -174,30 +175,30 @@ async function handleTabHidden(): Promise<void> {
 }
 
 async function handleTabShown(): Promise<void> {
+  if (pendingEnter === "auto") {
+    pendingEnter = null;
+  }
+
   if (!settings.autoPip) {
     return;
   }
 
   if (getActiveSession()?.reason === "auto") {
-    keepAfterLeave = false;
     exitPip();
   }
 }
 
 async function recoverPipAfterNavigation(): Promise<void> {
   applyPlaybackPrefs();
-  stopAdWatch?.();
-  stopAdWatch = watchAdState((showing) => {
-    if (!showing) {
-      void flushPendingEnter();
-    }
-  });
+  bindAdWatch();
 
-  if (isPipActive()) {
+  if (isPipActive() || !keepAfterLeave) {
     return;
   }
 
-  if (!keepAfterLeave) {
+  await waitForYoutubeVideo();
+
+  if (isPipActive() || !keepAfterLeave) {
     return;
   }
 
@@ -215,6 +216,11 @@ async function flushPendingEnter(): Promise<void> {
   }
 
   const reason = pendingEnter;
+  if (reason === "auto" && !pageIsHidden()) {
+    pendingEnter = null;
+    return;
+  }
+
   pendingEnter = null;
   await startPip(reason);
 }
@@ -296,32 +302,65 @@ function setSleep(minutes: number): void {
   sleepEndsAt = Date.now() + minutes * 60_000;
   sleepTimer = window.setTimeout(() => {
     video()?.pause();
-    keepAfterLeave = false;
+    forgetPipIntent();
     exitPip();
     sleepEndsAt = null;
   }, minutes * 60_000);
 }
 
 async function startPip(reason: "user" | "auto" | "keep"): Promise<boolean> {
-  const opened = await enterPip(reason);
-  if (opened) {
-    keepAfterLeave = true;
+  if (enterLock) {
+    return enterLock;
   }
-  return opened;
+
+  enterLock = openPip(reason).finally(() => {
+    enterLock = null;
+  });
+  return enterLock;
+}
+
+async function openPip(reason: "user" | "auto" | "keep"): Promise<boolean> {
+  if (isPipActive()) {
+    keepAfterLeave = true;
+    return true;
+  }
+
+  if (reason === "auto" && !pageIsHidden()) {
+    return false;
+  }
+
+  const opened = await enterPip(reason, { onUserClose: onPipWindowClosed });
+  if (!opened) {
+    return false;
+  }
+
+  if (reason === "auto" && !pageIsHidden()) {
+    exitPip();
+    return false;
+  }
+
+  keepAfterLeave = true;
+  return true;
+}
+
+function bindAdWatch(): void {
+  stopAdWatch?.();
+  stopAdWatch = watchAdState((showing) => {
+    if (!showing) {
+      void flushPendingEnter();
+    }
+  });
 }
 
 function bindMediaSession(): void {
-  const media = video();
-  if (media) {
-    media.disablePictureInPicture = false;
-  }
-
   try {
     navigator.mediaSession.setActionHandler(
       "enterpictureinpicture" as MediaSessionAction,
-      () => {
-        void onChromeAutoEnter();
-      },
+      settings.autoPip
+        ? () => {
+            void onChromeAutoEnter();
+          }
+        : () => undefined,
     );
     navigator.mediaSession.setActionHandler(
       "leavepictureinpicture" as MediaSessionAction,
@@ -335,7 +374,7 @@ function bindMediaSession(): void {
 }
 
 async function onChromeAutoEnter(): Promise<void> {
-  if (!settings.autoPip || isPipActive()) {
+  if (!settings.autoPip || isPipActive() || !pageIsHidden()) {
     return;
   }
 
@@ -350,6 +389,23 @@ async function onChromeAutoEnter(): Promise<void> {
   }
 
   await startPip("auto");
+}
+
+function onPipWindowClosed(): void {
+  if (youtubeNavigating) {
+    return;
+  }
+
+  forgetPipIntent();
+}
+
+function forgetPipIntent(): void {
+  keepAfterLeave = false;
+  pendingEnter = null;
+}
+
+function pageIsHidden(): boolean {
+  return document.visibilityState === "hidden";
 }
 
 function video(): HTMLVideoElement | null {

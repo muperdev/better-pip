@@ -9,16 +9,48 @@ const VIDEO_SELECTORS = [
 ] as const;
 
 export function findYoutubeVideo(): HTMLVideoElement | null {
-  for (const selector of VIDEO_SELECTORS) {
-    const video = document.querySelector<HTMLVideoElement>(selector);
-    if (video && video.readyState > 0) {
-      return video;
-    }
+  return findReadyVideo() ?? findAnyVideo();
+}
+
+export function waitForYoutubeVideo(timeoutMs = 2500): Promise<HTMLVideoElement | null> {
+  const ready = findReadyVideo();
+  if (ready) {
+    return Promise.resolve(ready);
   }
 
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const poll = (): void => {
+      const video = findReadyVideo();
+      if (video) {
+        resolve(video);
+        return;
+      }
+
+      if (Date.now() >= deadline) {
+        resolve(findAnyVideo());
+        return;
+      }
+
+      window.setTimeout(poll, 80);
+    };
+
+    poll();
+  });
+}
+
+function findReadyVideo(): HTMLVideoElement | null {
+  return findVideo((video) => video.readyState > 0);
+}
+
+function findAnyVideo(): HTMLVideoElement | null {
+  return findVideo(() => true);
+}
+
+function findVideo(match: (video: HTMLVideoElement) => boolean): HTMLVideoElement | null {
   for (const selector of VIDEO_SELECTORS) {
     const video = document.querySelector<HTMLVideoElement>(selector);
-    if (video) {
+    if (video && match(video)) {
       return video;
     }
   }

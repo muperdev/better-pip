@@ -1,7 +1,6 @@
 import { COMMAND_EVENT, STATE_EVENT, isCommandEnvelope } from "./shared/messages";
 import { watchPlayerToggle } from "./youtube/inject-toggle";
 import { bootRuntime, handleCommand } from "./player/runtime";
-import { togglePipSession } from "./pip/session";
 
 if (!window.__betterPipBooted) {
   window.__betterPipBooted = true;
@@ -12,7 +11,7 @@ function boot(): void {
   bootRuntime();
 
   watchPlayerToggle(() => {
-    void togglePipSession();
+    void handleCommand({ type: "toggle-pip" });
   });
 
   document.addEventListener(COMMAND_EVENT, (event) => {
@@ -34,7 +33,7 @@ function boot(): void {
   document.addEventListener("keydown", (event) => {
     if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === "KeyP") {
       event.preventDefault();
-      void togglePipSession();
+      void handleCommand({ type: "toggle-pip" });
     }
   });
 }
